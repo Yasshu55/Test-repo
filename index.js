@@ -1,134 +1,139 @@
-import express from "express";
+import express from 'express';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
+app.use(express.json());
 
-/* ---------------- LOGGER ---------------- */
-function log(level, component, msg) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [${level}] [${component}] ${msg}`);
-}
+// Middleware to log everything (creates verbose logs)
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Query:', JSON.stringify(req.query, null, 2));
+  next();
+});
 
-/* ---------------- CONFIG ---------------- */
-function loadConfig() {
-  log("INFO", "Config", "Loading environment variables");
+// Health check endpoint
+app.get('/health', (req, res) => {
+  console.log('Health check requested');
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-  for (let i = 0; i < 40; i++) {
-    log("DEBUG", "Config", `Reading env var index=${i}`);
-  }
-
-  if (!process.env.PAYMENTS_API_KEY) {
-    log("FATAL", "Config", "PAYMENTS_API_KEY is missing");
-    throw new Error("PAYMENTS_API_KEY not set");
-  }
-
-  log("INFO", "Config", "PAYMENTS_API_KEY loaded");
-
-  return {
-    paymentsKey: process.env.PAYMENTS_API_KEY,
-  };
-}
-
-/* ---------------- DB ---------------- */
-async function connectToDatabase() {
-  log("INFO", "DB", "Connecting to PostgreSQL");
-
-  for (let i = 1; i <= 10; i++) {
-    log("INFO", "DB", `Connection attempt ${i}`);
-    await delay(100);
-  }
-
-  for (let i = 0; i < 80; i++) {
-    log("DEBUG", "DB", `Handshake packet ${i} acknowledged`);
-  }
-
-  log("INFO", "DB", "Database connected");
-}
-
-/* ---------------- CACHE ---------------- */
-async function warmCache() {
-  log("INFO", "Cache", "Warming cache");
-
-  for (let i = 0; i < 120; i++) {
-    log("DEBUG", "Cache", `Loaded cache key=user:${i}`);
-  }
-
-  log("WARN", "Cache", "TTL mismatch on some keys");
-}
-
-/* ---------------- WORKER ---------------- */
-function startWorker() {
-  log("INFO", "Worker", "Starting background worker");
-
-  setInterval(() => {
-    for (let i = 0; i < 5; i++) {
-      log("DEBUG", "Worker", `Polling job queue shard=${i}`);
-    }
-  }, 200);
-}
-
-/* ---------------- SERVICE ---------------- */
-function processPayment(amount, config) {
-  log("INFO", "Payments", "Processing payment");
-  log("DEBUG", "Payments", `Amount=${amount}`);
-
-  for (let i = 0; i < 30; i++) {
-    log("DEBUG", "Payments", `Validating rule_${i}`);
-  }
-
-  if (!config.paymentsKey) {
-    throw new Error("Payments API key not configured");
-  }
-
-  log("INFO", "Payments", "Payment processed");
-  return { status: "success" };
-}
-
-/* ---------------- HTTP ---------------- */
-app.get("/", async (req, res) => {
+// Main route with multiple dependency checks
+app.get('/', (req, res) => {
+  console.log('=== Starting request processing ===');
+  
   try {
-    log("INFO", "HTTP", "Incoming GET / request");
-
-    for (let i = 0; i < 50; i++) {
-      log("DEBUG", "HTTP", `Header parse step ${i}`);
+    // Check 1: Database URL (CRITICAL - will fail if missing)
+    console.log('Checking database configuration...');
+    if (!process.env.DATABASE_URL) {
+      console.error('❌ DATABASE_URL not found in environment variables');
+      console.error('Expected format: postgresql://user:password@host:port/database');
+      console.error('Current env keys:', Object.keys(process.env).filter(k => !k.includes('SECRET')));
+      throw new Error('DATABASE_URL environment variable is required');
     }
-
-    await delay(200);
-
-    log("INFO", "HTTP", "Calling payment service");
-
-    const result = processPayment(499, app.locals.config);
-    res.json(result);
-  } catch (err) {
-    log("ERROR", "HTTP", err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.log('✓ Database URL configured');
+    
+    // Check 2: API Key (will warn if missing)
+    console.log('Checking API key configuration...');
+    if (!process.env.API_KEY) {
+      console.warn('⚠️  API_KEY not found - external service features will be disabled');
+    } else {
+      console.log('✓ API Key configured');
+    }
+    
+    // Check 3: Port configuration
+    console.log('Checking port configuration...');
+    const port = process.env.PORT || 3000;
+    console.log(`✓ Port configured: ${port}`);
+    
+    // Simulate some processing
+    console.log('Processing business logic...');
+    console.log('Connecting to database...');
+    console.log('Executing query...');
+    console.log('Formatting response...');
+    
+    res.json({ 
+      message: 'Hello there!',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+    
+    console.log('=== Request completed successfully ===');
+    
+  } catch (error) {
+    console.error('=== REQUEST FAILED ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Stack trace:', error.stack);
+    console.error('======================');
+    
+    res.status(500).json({ 
+      error: 'Internal Server Error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
-/* ---------------- STARTUP ---------------- */
-async function startApp() {
-  log("INFO", "App", "Starting application");
-
-  for (let i = 0; i < 60; i++) {
-    log("DEBUG", "App", `Bootstrapping module_${i}`);
-  }
-
-  app.locals.config = loadConfig();
-  await connectToDatabase();
-  await warmCache();
-  startWorker();
-
-  app.listen(3000, () => {
-    log("INFO", "App", "Server listening on port 3000");
+// Additional route to show the app works after fix
+app.get('/api/status', (req, res) => {
+  console.log('Status endpoint called');
+  res.json({
+    status: 'running',
+    uptime: process.uptime(),
+    environment: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      memory: process.memoryUsage()
+    }
   });
-}
+});
 
-/* ---------------- UTILS ---------------- */
-function delay(ms) {
-  return new Promise((res) => setTimeout(res, ms));
-}
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error caught by middleware:');
+  console.error(err);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
 
-/* ---------------- RUN ---------------- */
-startApp().catch((err) => {
-  log("FATAL", "App", err.message);
-  process.exit(1);
+const PORT = process.env.PORT || 3000;
+
+// Startup checks before listening
+console.log('=================================');
+console.log('Starting application...');
+console.log('Node version:', process.version);
+console.log('Environment:', process.env.NODE_ENV || 'development');
+console.log('=================================');
+
+app.listen(PORT, () => {
+  console.log(`✓ Server listening on port ${PORT}`);
+  console.log('Performing startup validation...');
+  
+  // Validate critical env vars on startup
+  const criticalEnvVars = ['DATABASE_URL'];
+  const missingVars = criticalEnvVars.filter(v => !process.env[v]);
+  
+  if (missingVars.length > 0) {
+    console.error('');
+    console.error('💥 STARTUP ERROR: Missing critical environment variables');
+    console.error('Missing variables:', missingVars.join(', '));
+    console.error('');
+    console.error('Please set the following in your .env file:');
+    missingVars.forEach(v => {
+      console.error(`  ${v}=<your-value-here>`);
+    });
+    console.error('');
+    console.error('Example .env file:');
+    console.error('  DATABASE_URL=postgresql://user:pass@localhost:5432/mydb');
+    console.error('  API_KEY=your-api-key-here');
+    console.error('  PORT=3000');
+    console.error('');
+    process.exit(1);
+  }
+  
+  console.log('✓ All critical environment variables present');
+  console.log('Application ready!');
 });
